@@ -1,0 +1,17 @@
+{
+  "name": "agent-config-manager",
+  "version": "0.1.0",
+  "description": "Página local para ver, apagar, archivar y restaurar skills, plugins, MCPs y hooks de Claude Code, Codex, Cursor, Gemini CLI y OpenCode.",
+  "type": "module",
+  "bin": { "agent-config-manager": "src/server.ts" },
+  "scripts": {
+    "start": "bun src/server.ts",
+    "demo": "bash test/fake-home.sh /tmp/acm-demo && bun src/server.ts --home /tmp/acm-demo/home --proyecto /tmp/acm-demo/proyecto --sin-cli",
+    "test": "bun test"
+  },
+  "files": ["src", "public", "bash"],
+  "engines": { "bun": ">=1.1" },
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/facundoPri/agent-config-manager" },
+  "keywords": ["claude-code", "codex", "skills", "mcp", "hooks", "agents"]
+}

@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Config Manager</title>
+<style>
+  :root { --bg:#fafaf9; --fg:#1c1917; --muted:#78716c; --line:#e7e5e4; --card:#fff; --soft:#f5f5f4; --accent:#c2410c; --blue:#2563eb; --on:#16a34a; --warn:#b45309; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1c1917; --fg:#f5f5f4; --muted:#a8a29e; --line:#44403c; --card:#292524; --soft:#231f1d; --accent:#fb923c; --blue:#60a5fa; --on:#4ade80; --warn:#fbbf24; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+  main { max-width:1040px; margin:0 auto; padding:20px 16px 80px; }
+  header { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; }
+  h1 { font-size:21px; margin:0; }
+  .meta { color:var(--muted); font-size:12px; margin-top:2px; word-break:break-all; }
+  button { font:inherit; font-size:13px; padding:6px 11px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; }
+  button:hover { border-color:var(--muted); }
+  button.primary { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+  button.small { font-size:12px; padding:2px 8px; }
+  button.link { border:0; background:none; padding:0; color:var(--blue); font-size:12px; }
+  button:disabled { opacity:.5; cursor:wait; }
+  a { color:var(--blue); }
+  nav { display:flex; gap:4px; margin:18px 0 12px; border-bottom:1px solid var(--line); overflow-x:auto; }
+  nav button { border:0; border-bottom:2px solid transparent; border-radius:0; background:none; padding:8px 12px; color:var(--muted); white-space:nowrap; }
+  nav button.on { color:var(--fg); border-bottom-color:var(--accent); font-weight:600; }
+  nav .n { font-size:11px; color:var(--muted); margin-left:4px; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+  .bar input[type=search] { flex:1; min-width:200px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); }
+  select { font:inherit; font-size:13px; padding:6px 8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .chip { font-size:12px; padding:3px 10px; border-radius:99px; }
+  .chip.on { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+  .list { border:1px solid var(--line); border-radius:10px; background:var(--card); overflow:hidden; margin-bottom:16px; }
+  .row { display:grid; grid-template-columns:44px 1fr auto; gap:10px; padding:10px 12px; border-top:1px solid var(--line); align-items:start; }
+  .row:first-child { border-top:0; }
+  .row.off .name, .row.off .desc { opacity:.5; }
+  .name { font-weight:600; font-family:ui-monospace, monospace; font-size:13px; word-break:break-all; }
+  .name a { color:inherit; text-decoration:none; }
+  .name a:hover { text-decoration:underline; }
+  .desc { color:var(--muted); font-size:12.5px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .mono { font-family:ui-monospace, monospace; font-size:12px; color:var(--muted); word-break:break-all; }
+  .tags { display:flex; gap:5px; flex-wrap:wrap; margin-top:5px; }
+  .tag { font-size:11px; padding:0 7px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
+  .tag.agent { color:var(--accent); border-color:var(--accent); }
+  .tag.warn { color:var(--warn); border-color:var(--warn); }
+  .acts { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .sub { margin:8px 0 0; display:grid; gap:4px; }
+  .sub .item { display:flex; justify-content:space-between; gap:8px; align-items:center; padding:4px 8px; background:var(--soft); border-radius:6px; }
+  .sw { position:relative; width:38px; height:22px; margin-top:1px; display:inline-block; }
+  .sw input { opacity:0; width:0; height:0; }
+  .sw span { position:absolute; inset:0; border-radius:99px; background:var(--line); cursor:pointer; transition:.15s; }
+  .sw span::after { content:""; position:absolute; left:3px; top:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:.15s; }
+  .sw input:checked + span { background:var(--on); }
+  .sw input:checked + span::after { transform:translateX(16px); }
+  .sw input:disabled + span { opacity:.5; cursor:wait; }
+  h3 { font-size:13px; margin:18px 0 6px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  .empty { padding:14px; color:var(--muted); }
+  .note { color:var(--muted); font-size:12px; margin:8px 0 14px; }
+  .toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:var(--fg); color:var(--bg); padding:8px 14px; border-radius:8px; font-size:13px; display:none; max-width:90vw; z-index:20; white-space:pre-line; }
+  dialog { border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--fg); padding:0; width:min(760px, calc(100vw - 32px)); max-height:calc(100vh - 48px); }
+  dialog::backdrop { background:rgba(0,0,0,.35); }
+  .dlg { padding:18px; }
+  .dlg h2 { margin:0 0 4px; font-size:18px; font-family:ui-monospace, monospace; word-break:break-all; }
+  .dlg pre { background:var(--soft); padding:12px; border-radius:8px; overflow:auto; max-height:50vh; font-size:12px; white-space:pre-wrap; }
+  .dlg label { display:flex; gap:8px; align-items:center; margin:6px 0; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:12px; }
+  .kbd { font-family:ui-monospace, monospace; font-size:11px; border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+  @media (max-width:600px) { .row { grid-template-columns:44px 1fr; } .acts { grid-column:2; justify-content:flex-start; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Agent Config Manager</h1>
+      <div class="meta" id="meta"></div>
+    </div>
+    <div class="acts">
+      <button onclick="load()">Recargar</button>
+      <button class="primary" onclick="openClean()">Arrancar limpio…</button>
+    </div>
+  </header>
+  <nav id="tabs"></nav>
+  <div class="bar">
+    <input type="search" id="q" placeholder="Buscar…  (atajo: /)">
+    <select id="estado"><option value="">Prendidas y archivadas</option><option value="on">Solo prendidas</option><option value="off">Solo archivadas</option></select>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div id="out"></div>
+</main>
+
+<dialog id="dlg"><div class="dlg" id="dlgBody"></div></dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+let S = null;
+let tab = 'skills', agent = '', q = '', estado = '';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const enc = (v) => esc(JSON.stringify(v));
+const has = (...xs) => !q || xs.some((x) => String(x ?? '').toLowerCase().includes(q));
+const tilde = (p) => S && p && p.startsWith(S.home + '/') ? '~' + p.slice(S.home.length) : p;
+
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = 'none'), 4500); }
+
+async function load() { S = await (await fetch('/api/state')).json(); render(); route(); }
+
+async function post(url, body, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(url, { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) { toast('Error: ' + j.error); render(); return null; }
+    if (j.state) { S = j.state; render(); }
+    const msg = [j.done?.length ? 'Listo: ' + j.done.slice(0, 6).join(', ') + (j.done.length > 6 ? ` y ${j.done.length - 6} más` : '') : '', ...(j.errors || []).map((e) => 'Ojo: ' + e)].filter(Boolean).join('\n');
+    if (msg) toast(msg);
+    return j;
+  } finally { if (btn) btn.disabled = false; }
+}
+const archiveTargets = (targets, label, btn) => post('/api/archive', { targets, label }, btn);
+const restoreRefs = (refs, btn) => post('/api/restore', { refs }, btn);
+const openPath = (path, reveal, btn) => post('/api/open', { path, reveal }, btn);
+
+// ---------- filtros ----------
+const TABS = [['skills', 'Skills'], ['plugins', 'Plugins'], ['mcps', 'MCPs'], ['hooks', 'Hooks'], ['rutas', 'Rutas'], ['archivo', 'Archivo']];
+function counts() {
+  return { skills: S.skills.length + S.archived.skills.length, plugins: S.plugins.length, mcps: S.mcps.length + S.archived.mcps.length,
+    hooks: S.hooks.length + S.archived.hooks.length, rutas: S.paths.reduce((n, g) => n + g.items.filter((i) => i.exists).length, 0), archivo: S.snapshots.length };
+}
+function agentOk(list) { return !agent || (list || []).includes(agent); }
+function stateOk(on) { return !estado || (estado === 'on') === on; }
+
+function visibleSkills() {
+  return [...S.skills, ...S.archived.skills]
+    .filter((s) => agentOk(s.seenBy) && stateOk(s.enabled) && has(s.name, s.description, s.dir, s.via))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+const toolAgents = (tool) => [tool];
+function visibleMcps() { return [...S.mcps, ...S.archived.mcps].filter((m) => agentOk(toolAgents(m.tool)) && stateOk(m.enabled) && has(m.name, m.detail, m.fileShort, m.tool)); }
+function visibleHooks() { return [...S.hooks, ...S.archived.hooks].filter((h) => agentOk(toolAgents(h.tool)) && stateOk(h.enabled) && has(h.event, h.matcher, h.commands.join(' '), h.fileShort)); }
+function visiblePlugins() {
+  return S.plugins.filter((p) => (!agent || agent === 'Claude Code') && stateOk(p.enabled) &&
+    has(p.plugin, p.description, ...p.skills.map((s) => s.name + ' ' + s.description), ...p.mcp, ...p.commands, ...p.agents));
+}
+
+// ---------- render ----------
+function render() {
+  $('meta').innerHTML = `home <b>${esc(S.home)}</b> · proyecto <b>${esc(tilde(S.project))}</b> · archivo <b>${esc(S.archive)}</b>` +
+    (S.claudeCli ? ' · plugins vía CLI <span class="kbd">claude</span>' : ' · plugins vía settings.json');
+  const c = counts();
+  $('tabs').innerHTML = TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" onclick="go('${k}')">${l}<span class="n">${c[k]}</span></button>`).join('');
+  $('chips').innerHTML = ['', ...S.agents].map((a) => `<button class="chip ${a === agent ? 'on' : ''}" onclick="agent='${a}';render()">${a || 'Todos los agentes'}</button>`).join('');
+  $('chips').style.display = $('estado').style.display = ['skills', 'plugins', 'mcps', 'hooks'].includes(tab) ? '' : 'none';
+  $('out').innerHTML = ({ skills: renderSkills, plugins: renderPlugins, mcps: renderMcps, hooks: renderHooks, rutas: renderPaths, archivo: renderArchive })[tab]();
+}
+function go(t) { tab = t; if (!location.hash.startsWith('#/skill/')) history.replaceState(null, '', '#/' + t); render(); }
+
+const sw = (on, onchange) => `<label class="sw"><input type="checkbox" ${on ? 'checked' : ''} onchange="${esc(onchange)}"><span></span></label>`;
+const tags = (xs) => `<div class="tags">${xs.filter(Boolean).join('')}</div>`;
+const tag = (t, cls = '') => `<span class="tag ${cls}">${esc(t)}</span>`;
+const bulkBar = (n, onArchive, onRestore, nOff) => `<div class="bar">
+  <span class="note" style="margin:0">${n} a la vista</span>
+  ${n - nOff ? `<button class="small" onclick="${esc(onArchive)}">Archivar las ${n - nOff} prendidas que se ven</button>` : ''}
+  ${nOff ? `<button class="small" onclick="${esc(onRestore)}">Restaurar las ${nOff} archivadas que se ven</button>` : ''}</div>`;
+
+function skillRow(s) {
+  const toggle = s.enabled
+    ? `archiveTargets([{kind:'skill',path:${JSON.stringify(s.path)}}], 'skill-${s.folder}', this)`
+    : `restoreRefs([${JSON.stringify(s.ref)}], this)`;
+  const href = '#/skill/' + encodeURIComponent(s.name);
+  return `<div class="row ${s.enabled ? '' : 'off'}">
+    ${sw(s.enabled, toggle)}
+    <div>
+      <div class="name"><a href="${href}">${esc(s.name)}</a></div>
+      <div class="desc">${esc(s.description)}</div>
+      ${tags([...s.seenBy.map((a) => tag(a, 'agent')), tag(s.dir), tag(s.scope), tag(s.via, s.via === 'enlace roto' ? 'warn' : ''),
+        ...(s.alsoAt || []).map((p) => tag('también en ' + p))])}
+    </div>
+    <div class="acts">
+      <button class="small" onclick="location.hash='${href}'">Ver</button>
+      ${s.enabled ? `<button class="small" onclick='openPath(${enc(s.path)}, false, this)'>VS Code</button>` : ''}
+      ${s.links?.github ? `<a class="small" href="${esc(s.links.github)}" target="_blank" rel="noopener">GitHub</a>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderSkills() {
+  const list = visibleSkills();
+  const on = list.filter((s) => s.enabled), off = list.filter((s) => !s.enabled);
+  window._vis = { on: on.map((s) => ({ kind: 'skill', path: s.path })), off: off.map((s) => s.ref) };
+  return bulkBar(list.length, `archiveTargets(_vis.on, 'skills', this)`, `restoreRefs(_vis.off, this)`, off.length) +
+    `<div class="list">${list.map(skillRow).join('') || '<div class="empty">No hay skills con este filtro.</div>'}</div>
+    <p class="note">Apagar una skill la mueve al archivo (no se borra) y la podés prender de nuevo cuando quieras. "Visible en" junta todos los agentes que la cargan: <span class="kbd">npx skills</span> deja la carpeta real en <span class="kbd">~/.agents/skills</span> (Codex, OpenCode, Gemini) y un enlace en <span class="kbd">~/.claude/skills</span>.</p>`;
+}
+
+function renderPlugins() {
+  const list = visiblePlugins();
+  const archivedRefs = Object.fromEntries(S.archived.plugins.map((p) => [p.plugin, p.ref]));
+  if (!S.plugins.length) return `<div class="list"><div class="empty">No hay plugins de Claude Code instalados.</div></div>`;
+  return `<div class="list">${list.map((p) => {
+    const toggle = !p.enabled && archivedRefs[p.plugin] ? `restoreRefs([${JSON.stringify(archivedRefs[p.plugin])}], this)` : `post('/api/plugin', {plugin:${JSON.stringify(p.plugin)}, on:${!p.enabled}}, this)`;
+    const sub = (title, xs) => xs.length ? `<div class="mono">${title}: ${xs.map(esc).join(', ')}</div>` : '';
+    return `<div class="row ${p.enabled ? '' : 'off'}">
+      ${sw(p.enabled, toggle)}
+      <div>
+        <div class="name">${esc(p.plugin)}</div>
+        <div class="desc">${esc(p.description)}</div>
+        ${tags([tag('Claude Code', 'agent'), p.version && tag('v' + p.version), p.scope && tag(p.scope), archivedRefs[p.plugin] && tag('apagado al arrancar limpio', 'warn'),
+          tag(p.skills.length + ' skills'), p.mcp.length && tag(p.mcp.length + ' MCPs'), p.hooks.length && tag('hooks: ' + p.hooks.join(', ')),
+          p.commands.length && tag(p.commands.length + ' comandos'), p.agents.length && tag(p.agents.length + ' agentes')])}
+        <div class="sub">
+          ${p.skills.filter((s) => has(p.plugin, s.name, s.description)).map((s) => `<div class="item">
+            <div><span class="name"><a href="#/plugin-skill/${encodeURIComponent(p.plugin)}/${encodeURIComponent(s.folder)}">${esc(s.name)}</a></span> <span class="desc" style="display:inline">${esc(s.description.slice(0, 120))}</span></div>
+            <button class="small" title="Copia la skill a ~/.claude/skills para usarla sin el plugin" onclick='post("/api/copy-skill", {plugin:${enc(p.plugin)}, folder:${enc(s.folder)}}, this)'>Usar sin el plugin</button>
+          </div>`).join('')}
+          ${sub('MCPs', p.mcp)}${sub('Comandos', p.commands.map((c) => '/' + c))}${sub('Agentes', p.agents)}
+        </div>
+      </div>
+      <div class="acts">
+        ${p.installPath ? `<button class="small" onclick='openPath(${enc(p.installPath)}, false, this)'>VS Code</button>` : ''}
+        ${p.url ? `<a class="small" href="${esc(p.url)}" target="_blank" rel="noopener">Página</a>` : ''}
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">No hay plugins con este filtro.</div>'}</div>
+  <p class="note">Claude Code prende y apaga plugins enteros: no deja apagar una skill suelta de un plugin. Si querés solo algunas, usá "Usar sin el plugin" en esas y después apagá el plugin.</p>`;
+}
+
+function renderMcps() {
+  const list = visibleMcps();
+  const on = list.filter((m) => m.enabled), off = list.filter((m) => !m.enabled);
+  window._vis = { on: on.map((m) => m.target), off: off.map((m) => m.ref) };
+  const fromPlugins = S.plugins.filter((p) => p.mcp.length && (!agent || agent === 'Claude Code'));
+  return bulkBar(list.length, `archiveTargets(_vis.on, 'mcps', this)`, `restoreRefs(_vis.off, this)`, off.length) +
+    `<div class="list">${list.map((m) => `<div class="row ${m.enabled ? '' : 'off'}">
+      ${sw(m.enabled, m.enabled ? `archiveTargets([${JSON.stringify(m.target)}], 'mcp-${m.name}', this)` : `restoreRefs([${JSON.stringify(m.ref)}], this)`)}
+      <div><div class="name">${esc(m.name)}</div><div class="mono">${esc(m.detail)}</div>
+        ${tags([tag(m.tool, 'agent'), tag(m.scope), tag(m.fileShort), m.transport && tag(m.transport), m.disabledInConfig && tag('desactivado en el archivo', 'warn'), !m.enabled && tag('archivado en ' + m.snapshot)])}</div>
+      <div class="acts">${m.file ? `<button class="small" onclick='openPath(${enc(m.file)}, false, this)'>VS Code</button>` : ''}</div>
+    </div>`).join('') || '<div class="empty">No hay MCPs con este filtro.</div>'}</div>
+    ${fromPlugins.length ? `<h3>MCPs que traen los plugins</h3><div class="list">${fromPlugins.map((p) => `<div class="row"><div></div><div><div class="name">${esc(p.mcp.join(', '))}</div>${tags([tag('plugin ' + p.plugin), tag(p.enabled ? 'prendido' : 'apagado')])}</div><div></div></div>`).join('')}</div>` : ''}
+    <p class="note">Archivar un MCP lo saca de su archivo de configuración y lo guarda en el archivo; restaurarlo lo vuelve a poner igual. Antes de tocar un archivo se guarda una copia en <span class="kbd">${esc(S.archive)}/.backups</span>. Cerrá Claude Code antes de tocar los MCPs de usuario: guarda <span class="kbd">~/.claude.json</span> al salir.</p>`;
+}
+
+function renderHooks() {
+  const list = visibleHooks();
+  const on = list.filter((h) => h.enabled), off = list.filter((h) => !h.enabled);
+  window._vis = { on: on.map((h) => h.target), off: off.map((h) => h.ref) };
+  const fromPlugins = S.plugins.filter((p) => p.hooks.length && (!agent || agent === 'Claude Code'));
+  return bulkBar(list.length, `archiveTargets(_vis.on, 'hooks', this)`, `restoreRefs(_vis.off, this)`, off.length) +
+    `<div class="list">${list.map((h) => `<div class="row ${h.enabled ? '' : 'off'}">
+      ${sw(h.enabled, h.enabled ? `archiveTargets([${JSON.stringify(h.target)}], 'hook-${h.event}', this)` : `restoreRefs([${JSON.stringify(h.ref)}], this)`)}
+      <div><div class="name">${esc(h.event)}${h.matcher ? ' · ' + esc(h.matcher) : ''}</div>
+        ${h.commands.map((c) => `<div class="mono">${esc(c)}</div>`).join('')}
+        ${tags([tag(h.tool, 'agent'), tag(h.scope), tag(h.fileShort), !h.enabled && tag('archivado en ' + h.snapshot)])}</div>
+      <div class="acts">${h.file ? `<button class="small" onclick='openPath(${enc(h.file)}, false, this)'>VS Code</button>` : ''}</div>
+    </div>`).join('') || '<div class="empty">No hay hooks con este filtro.</div>'}</div>
+    ${fromPlugins.length ? `<h3>Hooks que traen los plugins</h3><div class="list">${fromPlugins.map((p) => `<div class="row"><div></div><div><div class="name">${esc(p.hooks.join(', '))}</div>${tags([tag('plugin ' + p.plugin), tag(p.enabled ? 'prendido' : 'apagado')])}</div><div></div></div>`).join('')}</div>` : ''}`;
+}
+
+function renderPaths() {
+  return `<div class="grid2">${S.paths.map((g) => `<div><h3>${esc(g.tool)}</h3><div class="list">${g.items.filter((i) => has(i.label, i.path)).map((i) => `<div class="row" style="grid-template-columns:1fr auto">
+      <div><div>${esc(i.label)}</div><div class="mono">${esc(tilde(i.path))}${i.exists ? '' : ' · no existe'}</div></div>
+      <div class="acts">${i.exists ? `<button class="small" onclick='openPath(${enc(i.path)}, false, this)'>VS Code</button><button class="small" onclick='openPath(${enc(i.path)}, true, this)'>Mostrar</button>` : ''}
+        <button class="small" onclick='navigator.clipboard.writeText(${enc(i.path)}).then(() => toast("Ruta copiada"))'>Copiar</button></div>
+    </div>`).join('')}</div></div>`).join('')}</div>
+    <p class="note">"VS Code" usa el comando <span class="kbd">${esc(S.editor)}</span> (cambialo con <span class="kbd">--editor cursor</span>, por ejemplo).</p>`;
+}
+
+function renderArchive() {
+  const list = S.snapshots.filter((s) => has(s.name, s.label)).reverse();
+  return `<div class="list">${list.map((s) => `<div class="row" style="grid-template-columns:1fr auto">
+      <div><div class="name">${esc(s.label)}</div><div class="mono">${esc(s.dir)}</div>
+        ${tags([tag(new Date(s.created).toLocaleString()), s.skills && tag(s.skills + ' skills'), s.items && tag(s.items + ' plugins/MCPs/hooks'), s.legacy && tag('archivo viejo (skills-toggle.sh)', 'warn')])}</div>
+      <div class="acts"><button class="small" onclick='restoreRefs([${enc(s.ref)}], this)'>Restaurar todo</button></div>
+    </div>`).join('') || '<div class="empty">El archivo está vacío: no hay nada apagado.</div>'}</div>
+    <p class="note">Cada vez que archivás algo se crea una carpeta acá. Restaurar devuelve cada cosa a su lugar y nunca pisa algo que ya exista con el mismo nombre.</p>`;
+}
+
+// ---------- página de una skill ----------
+async function showSkill(s, extra = '') {
+  const d = s.skillMd ? await (await fetch('/api/skill?file=' + encodeURIComponent(s.skillMd))).json() : { content: '', files: [] };
+  $('dlgBody').innerHTML = `<h2>${esc(s.name)}</h2>
+    <div class="desc" style="-webkit-line-clamp:unset">${esc(s.description)}</div>
+    ${tags([...(s.seenBy || []).map((a) => tag(a, 'agent')), s.dir && tag(s.dir), s.via && tag(s.via), extra && tag(extra)])}
+    <p class="mono">${esc(tilde(d.dir || s.path || ''))}</p>
+    <div class="acts" style="justify-content:flex-start">
+      ${d.dir ? `<button onclick='openPath(${enc(d.dir)}, false, this)'>Abrir en VS Code</button><button onclick='openPath(${enc(d.dir)}, true, this)'>Mostrar carpeta</button>` : ''}
+      ${s.links?.github ? `<a href="${esc(s.links.github)}" target="_blank" rel="noopener">GitHub</a>` : ''}
+      ${s.links?.skillsSh ? `<a href="${esc(s.links.skillsSh)}" target="_blank" rel="noopener">skills.sh</a>` : ''}
+      <button onclick='navigator.clipboard.writeText(location.href).then(() => toast("Link copiado"))'>Copiar link a esta página</button>
+      <button onclick="closeDlg()">Cerrar</button>
+    </div>
+    ${d.files?.length ? `<h3>Archivos</h3><div class="mono">${d.files.map(esc).join(' · ')}</div>` : ''}
+    <h3>SKILL.md</h3><pre>${esc(d.content || d.error || '')}</pre>`;
+  if (!$('dlg').open) $('dlg').showModal();
+}
+function closeDlg() { $('dlg').close(); }
+$('dlg').addEventListener('close', () => { if (/^#\/(plugin-)?skill\//.test(location.hash)) history.replaceState(null, '', '#/' + tab); });
+
+function route() {
+  const h = decodeURIComponent(location.hash);
+  let m;
+  if ((m = h.match(/^#\/skill\/(.+)$/))) {
+    const s = [...S.skills, ...S.archived.skills].find((x) => x.name === m[1] || x.folder === m[1]);
+    if (s) showSkill(s); else toast('No encuentro la skill ' + m[1]);
+  } else if ((m = h.match(/^#\/plugin-skill\/([^/]+)\/(.+)$/))) {
+    const p = S.plugins.find((x) => x.plugin === m[1]);
+    const s = p?.skills.find((x) => x.folder === m[2]);
+    if (s) showSkill({ ...s, skillMd: s.path + '/SKILL.md', seenBy: ['Claude Code'], dir: 'plugin ' + p.plugin, via: p.enabled ? 'plugin prendido' : 'plugin apagado', links: { github: p.url } });
+  } else if ((m = h.match(/^#\/(\w+)$/)) && TABS.some(([k]) => k === m[1])) { tab = m[1]; render(); }
+}
+window.addEventListener('hashchange', route);
+
+// ---------- arrancar limpio ----------
+function openClean() {
+  const n = { skills: S.skills.filter((s) => s.scope === 'personal').length, skillsP: S.skills.filter((s) => s.scope === 'proyecto').length,
+    plugins: S.plugins.filter((p) => p.enabled).length, mcps: S.mcps.length, hooks: S.hooks.length };
+  $('dlgBody').innerHTML = `<h2 style="font-family:inherit">Arrancar limpio</h2>
+    <p class="note">Archiva todo lo marcado en una sola carpeta del archivo. Después lo devolvés entero desde la pestaña Archivo con "Restaurar todo".</p>
+    <label><input type="checkbox" id="c-skills" checked> Skills personales (${n.skills})</label>
+    <label><input type="checkbox" id="c-skillsP"> Skills del proyecto (${n.skillsP})</label>
+    <label><input type="checkbox" id="c-plugins" checked> Apagar plugins de Claude Code (${n.plugins})</label>
+    <label><input type="checkbox" id="c-mcps"> MCPs (${n.mcps})</label>
+    <label><input type="checkbox" id="c-hooks"> Hooks (${n.hooks})</label>
+    <label>Solo de <select id="c-agent"><option value="">todos los agentes</option>${S.agents.map((a) => `<option>${esc(a)}</option>`).join('')}</select></label>
+    <div class="acts" style="justify-content:flex-start;margin-top:12px">
+      <button class="primary" onclick="doClean(this)">Archivar</button><button onclick="closeDlg()">Cancelar</button></div>`;
+  $('dlg').showModal();
+}
+async function doClean(btn) {
+  const on = (id) => $(id).checked, a = $('c-agent').value;
+  const ok = (list) => !a || list.includes(a);
+  const t = [];
+  if (on('c-skills')) t.push(...S.skills.filter((s) => s.scope === 'personal' && ok(s.seenBy)).map((s) => ({ kind: 'skill', path: s.path })));
+  if (on('c-skillsP')) t.push(...S.skills.filter((s) => s.scope === 'proyecto' && ok(s.seenBy)).map((s) => ({ kind: 'skill', path: s.path })));
+  if (on('c-plugins') && ok(['Claude Code'])) t.push(...S.plugins.filter((p) => p.enabled).map((p) => ({ kind: 'plugin', plugin: p.plugin })));
+  if (on('c-mcps')) t.push(...S.mcps.filter((m) => ok([m.tool])).map((m) => m.target));
+  if (on('c-hooks')) t.push(...S.hooks.filter((h) => ok([h.tool])).map((h) => h.target));
+  if (!t.length) return toast('No hay nada para archivar con esa selección.');
+  // Una skill enlazada desde dos carpetas se archiva una vez por carpeta: está bien, cada enlace vuelve a su lugar.
+  const r = await archiveTargets(t, 'arrancar-limpio' + (a ? '-' + a : ''), btn);
+  if (r) { closeDlg(); go('archivo'); }
+}
+
+// ---------- teclado ----------
+$('q').addEventListener('input', (e) => { q = e.target.value.trim().toLowerCase(); render(); });
+$('estado').addEventListener('change', (e) => { estado = e.target.value; render(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && document.activeElement !== $('q') && !$('dlg').open) { e.preventDefault(); $('q').focus(); }
+});
+load();
+</script>
+</body>
+</html>
