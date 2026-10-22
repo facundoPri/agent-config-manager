@@ -7,6 +7,7 @@ export type Ctx = {
   home: string;
   project: string;
   archive: string; // donde se guardan las cosas archivadas
+  backups: string; // copias de seguridad (copian, no mueven)
   legacyArchives: string[]; // archivos viejos de skills-toggle.sh / skills-ui, solo para restaurar
   editor: string;
   useClaudeCli: boolean;
@@ -20,6 +21,7 @@ export function makeCtx(opts: { home?: string; proyecto?: string; editor?: strin
     home,
     project: path.resolve(opts.proyecto || process.cwd()),
     archive,
+    backups: process.env.AGENT_CONFIG_BACKUPS || path.join(home, '.agent-config-backups'),
     legacyArchives: legacy !== archive && fs.existsSync(legacy) ? [legacy] : [],
     editor: opts.editor || process.env.AGENT_CONFIG_EDITOR || 'code',
     useClaudeCli: !opts.sinCli,
@@ -141,6 +143,7 @@ export function importantPaths(c: Ctx) {
     ] },
     { tool: 'Esta app', items: [
       { label: 'Archivo (lo apagado vive acá)', path: c.archive },
+      { label: 'Copias de seguridad', path: c.backups },
       ...c.legacyArchives.map((p) => ({ label: 'Archivo viejo de skills-toggle.sh', path: p })),
     ] },
   ];
@@ -152,4 +155,16 @@ export function importantPaths(c: Ctx) {
       return { ...i, exists: kind !== null, kind };
     }),
   }));
+}
+
+// Archivos de configuración que entran en una copia de seguridad (los que existan).
+export function configFiles(c: Ctx): string[] {
+  const H = (p: string) => path.join(c.home, p);
+  const P = (p: string) => path.join(c.project, p);
+  const files = [
+    ...mcpSources(c).map((s) => s.file), ...hookSources(c).map((s) => s.file),
+    H('.claude/CLAUDE.md'), H('.claude/plugins/installed_plugins.json'), H('.claude/plugins/known_marketplaces.json'),
+    H('.codex/AGENTS.md'), H('.agents/.skill-lock.json'), P('skills-lock.json'), P('CLAUDE.md'), P('AGENTS.md'),
+  ];
+  return [...new Set(files)].filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
 }

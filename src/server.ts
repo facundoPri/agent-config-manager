@@ -6,6 +6,7 @@ import path from 'node:path';
 import { makeCtx, type Ctx } from './context';
 import { state, skillDetail } from './scan';
 import { archive, restore, type Target } from './archive';
+import { createBackup, restoreBackup } from './backup';
 import { listPlugins, setPluginEnabled } from './plugins';
 import { exists, isInside, tilde } from './util';
 
@@ -35,7 +36,7 @@ const PUBLIC = path.join(import.meta.dir, '..', 'public');
 function openPath(c: Ctx, p: string, reveal: boolean) {
   const target = path.resolve(p);
   const plugins = path.join(c.home, '.claude/plugins');
-  if (![c.home, c.project].some((root) => isInside(target, root)) && !isInside(target, plugins)) throw new Error('solo abro rutas dentro del home o del proyecto');
+  if (![c.home, c.project, c.backups].some((root) => isInside(target, root)) && !isInside(target, plugins)) throw new Error('solo abro rutas dentro del home o del proyecto');
   const tries: string[][] = [];
   if (reveal) {
     const where = exists(target) ? target : path.dirname(target);
@@ -93,6 +94,8 @@ async function handle(req: Request): Promise<Response> {
     case '/api/restore': result = restore(ctx, (body.refs || []).map(String)); break;
     case '/api/plugin': setPluginEnabled(ctx, String(body.plugin), !!body.on); result = { done: [(body.on ? 'prendido ' : 'apagado ') + body.plugin] }; break;
     case '/api/copy-skill': result = { done: ['copiada a ' + copyPluginSkill(ctx, String(body.plugin), String(body.folder))] }; break;
+    case '/api/backup': result = createBackup(ctx, String(body.label || 'copia')); break;
+    case '/api/restore-backup': result = restoreBackup(ctx, String(body.name), !!body.withFiles); break;
     case '/api/open': result = { done: ['abierto con ' + openPath(ctx, String(body.path), !!body.reveal)] }; break;
     default: return json({ error: 'no existe' }, 404);
   }

@@ -6,8 +6,32 @@ import { skillSources, mcpSources, hookSources, importantPaths, AGENTS } from '.
 import { readJson, exists, frontmatter, tilde, realpath, getAt, hash } from './util';
 import { listPlugins, hasClaudeCli } from './plugins';
 import { listSnapshots } from './archive';
+import { listBackups } from './backup';
 
 type Links = { github?: string; skillsSh?: string };
+
+const git = (cwd: string, args: string[]) => {
+  try {
+    const r = Bun.spawnSync(['git', '-C', cwd, ...args], { stdout: 'pipe', stderr: 'ignore' });
+    return r.exitCode === 0 ? r.stdout.toString().trim() : null;
+  } catch { return null; }
+};
+
+// ¿La carpeta real de la skill está dentro de un repo git? Con qué remoto y si tiene cambios sin commitear.
+type GitInfo = { root: string; remote?: string; url?: string; status: 'al día' | 'cambios sin commitear' | 'sin trackear' };
+function gitInfo(dir: string, cache: Map<string, string | null>): GitInfo | null {
+  let root = cache.get(dir);
+  if (root === undefined) { root = git(dir, ['rev-parse', '--show-toplevel']); cache.set(dir, root); }
+  if (!root) return null;
+  const status = git(root, ['status', '--porcelain', '--', dir]) ?? '';
+  const lines = status.split('\n').filter(Boolean);
+  const remote = git(root, ['remote', 'get-url', 'origin']) || undefined;
+  const url = remote?.replace(/^git@github\.com:/, 'https://github.com/').replace(/\.git$/, '');
+  return {
+    root, remote, url: url?.startsWith('https://') ? url : undefined,
+    status: !lines.length ? 'al día' : lines.every((l) => l.startsWith('??')) ? 'sin trackear' : 'cambios sin commitear',
+  };
+}
 
 // Lock de npx skills: dice de qué repo vino cada skill.
 function lockInfo(c: Ctx, name: string): { source: string; links: Links } | null {
@@ -51,7 +75,10 @@ function skills(c: Ctx) {
   }
   // Si la misma carpeta real aparece en varios lugares (npx skills deja la real en ~/.agents y enlaces en el resto),
   // cada fila muestra todos los agentes que la ven.
+  const cache = new Map<string, string | null>();
   for (const r of rows) {
+    const g = gitInfo(r.real, cache);
+    r.git = g ? { ...g, root: tilde(c.home, g.root) } : null;
     const same = rows.filter((o) => o.real === r.real);
     r.seenBy = [...new Set(same.flatMap((o) => o.agents))];
     r.alsoAt = same.filter((o) => o !== r).map((o) => o.dir + '/' + o.folder);
@@ -139,6 +166,8 @@ export function state(c: Ctx) {
     snapshots: snaps.map((s) => ({ ref: `${s.dir}|all|`, name: s.name, label: s.label, created: s.created, dir: tilde(c.home, s.dir),
       skills: s.skills.length, items: s.items.length, legacy: s.root !== c.archive })),
     paths: importantPaths(c),
+    backups: listBackups(c),
+    backupsDir: tilde(c.home, c.backups),
   };
 }
 

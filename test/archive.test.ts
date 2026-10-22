@@ -6,6 +6,7 @@ import os from 'node:os';
 import { makeCtx } from '../src/context';
 import { state } from '../src/scan';
 import { archive, restore } from '../src/archive';
+import { createBackup, restoreBackup, listBackups } from '../src/backup';
 
 const ROOT = path.join(os.tmpdir(), 'acm-test-' + process.pid);
 const H = path.join(ROOT, 'home'), P = path.join(ROOT, 'proyecto');
@@ -111,4 +112,37 @@ test('plugins sin CLI: lee installed_plugins.json y apaga con enabledPlugins', (
   expect(state(c).plugins[0].enabled).toBe(false);
   restore(c, [state(c).archived.plugins[0].ref]);
   expect(state(c).plugins[0].enabled).toBe(true);
+});
+
+test('dice si una skill está en un repo git', () => {
+  const s = state(ctx());
+  const enRepo = s.skills.find((x: any) => x.folder === 'en-repo');
+  expect(enRepo.git.url).toBe('https://github.com/alguien/mis-skills');
+  expect(enRepo.git.status).toBe('al día');
+  fs.appendFileSync(path.join(H, 'repos/mis-skills/en-repo/SKILL.md'), 'cambio\n');
+  expect(state(ctx()).skills.find((x: any) => x.folder === 'en-repo').git.status).toBe('cambios sin commitear');
+  expect(s.skills.find((x: any) => x.folder === 'mi-skill').git).toBeNull();
+});
+
+test('copia de seguridad: copia sin mover y restaura solo lo que falta', () => {
+  const c = ctx();
+  const r = createBackup(c, 'copia');
+  expect(fs.existsSync(path.join(H, '.claude/skills/mi-skill/SKILL.md'))).toBe(true); // no movió nada
+  const b = listBackups(c)[0];
+  expect(b.missing).toBe(0);
+  expect(b.files).toBeGreaterThan(3);
+  // se pierde una skill y se rompe la config
+  fs.rmSync(path.join(H, '.claude/skills/mi-skill'), { recursive: true });
+  fs.rmSync(path.join(H, '.claude/skills/grill-me'));
+  fs.writeFileSync(path.join(H, '.claude/settings.json'), '{}');
+  expect(listBackups(c)[0].missing).toBe(2);
+  const rr = restoreBackup(c, r.backup, false);
+  expect(rr.errors).toEqual([]);
+  expect(read(path.join(H, '.claude/skills/mi-skill/SKILL.md'))).toContain('mi-skill');
+  expect(fs.lstatSync(path.join(H, '.claude/skills/grill-me')).isSymbolicLink()).toBe(true);
+  expect(read(path.join(H, '.claude/settings.json'))).toBe('{}'); // sin withFiles no toca la config
+  restoreBackup(c, r.backup, true);
+  expect(JSON.parse(read(path.join(H, '.claude/settings.json'))).hooks.Stop).toBeTruthy();
+  // antes de pisar la config hizo una copia de la actual
+  expect(listBackups(c).some((x: any) => x.label.startsWith('antes-de-restaurar'))).toBe(true);
 });

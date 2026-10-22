@@ -47,4 +47,9 @@ cat >"$H/.claude/settings.json" <<'J'
   "PostToolUse": [ { "matcher": "Edit|Write", "hooks": [ { "type": "command", "command": "npx prettier --write \"$FILE\"" } ] } ],
   "Stop": [ { "hooks": [ { "type": "command", "command": "say listo" } ] } ] } }
 J
+# Una skill que vive en un repo git propio, enlazada desde ~/.claude/skills.
+skill "$H/repos/mis-skills" en-repo "Skill versionada en un repo git"
+git -C "$H/repos/mis-skills" init -q && git -C "$H/repos/mis-skills" remote add origin git@github.com:alguien/mis-skills.git
+git -C "$H/repos/mis-skills" -c user.name=t -c user.email=t@t add -A && git -C "$H/repos/mis-skills" -c user.name=t -c user.email=t@t commit -qm init
+ln -s "$H/repos/mis-skills/en-repo" "$H/.claude/skills/en-repo"
 echo "Listo: $ROOT"

@@ -43,6 +43,9 @@ Para probar con datos falsos: `bun run demo` (crea un home de mentira en `/tmp/a
 - **Hooks**: settings de Claude Code (usuario, proyecto, local), `~/.codex/hooks.json`, Gemini CLI, y los de los plugins.
 - **Rutas**: los archivos y carpetas importantes de cada herramienta, con botones para abrirlos en VS Code, mostrarlos en el Finder o copiar la ruta.
 - **Archivo**: todo lo que apagaste, agrupado por cuándo, con "Restaurar todo".
+- **Copias**: copias de seguridad de tus skills, agentes, comandos y archivos de configuración.
+
+Cada skill dice además si está respaldada: si su carpeta real está en un repo git (con el remoto y si tiene cambios sin commitear) o si vino de `npx skills` (se puede reinstalar). Las que no tienen ninguna de las dos dicen "sin repo: solo vive acá", y el filtro "Skills sin repo ni origen" te las muestra juntas.
 
 Cada skill tiene su página con el `SKILL.md` completo y los archivos que trae. Tiene link propio: `http://localhost:4321/#/skill/<nombre>`. La tecla `/` va al buscador.
 
@@ -65,6 +68,14 @@ Todo lo apagado va a `~/.agent-config-archive/<fecha>-<etiqueta>/` (cambialo con
 - **Arrancar limpio**: archiva de una vez skills, plugins, MCPs y hooks (elegís qué y de qué agente) en una sola carpeta, que después restaurás entera.
 
 Restaurar devuelve cada cosa a su lugar y nunca pisa algo que ya exista con el mismo nombre. Los cambios se notan en la próxima sesión del agente. Cerrá Claude Code antes de tocar los MCPs de usuario, porque reescribe `~/.claude.json` al salir.
+
+## Archivo y copias: la diferencia
+
+- **Archivar** (y "Arrancar limpio") *mueve* las cosas fuera de su lugar para que el agente no las cargue. Restaurar las devuelve.
+- **Copia de seguridad** *copia* sin mover nada, a `~/.agent-config-backups/<fecha>/` (cambialo con `AGENT_CONFIG_BACKUPS`). Guarda las carpetas de skills, `~/.claude/agents`, `~/.claude/commands` y los archivos de configuración (settings, `~/.claude.json`, `~/.codex/config.toml`, `.mcp.json`, CLAUDE.md, AGENTS.md, locks de `npx skills`, lista de plugins). Los enlaces se guardan como enlaces.
+  - "Restaurar las que faltan" devuelve solo las skills que hoy no están, sin pisar nada.
+  - "Restaurar también la config" vuelve a poner los archivos de configuración de la copia; antes hace una copia de los actuales.
+- "Arrancar limpio" hace una copia de seguridad antes de archivar (se puede destildar).
 
 ## Sin Bun: la versión en bash
 

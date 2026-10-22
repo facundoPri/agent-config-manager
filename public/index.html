@@ -43,6 +43,7 @@
   .tag { font-size:11px; padding:0 7px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
   .tag.agent { color:var(--accent); border-color:var(--accent); }
   .tag.warn { color:var(--warn); border-color:var(--warn); }
+  .tag.ok { color:var(--on); border-color:var(--on); }
   .acts { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
   .sub { margin:8px 0 0; display:grid; gap:4px; }
   .sub .item { display:flex; justify-content:space-between; gap:8px; align-items:center; padding:4px 8px; background:var(--soft); border-radius:6px; }
@@ -83,7 +84,7 @@
   <nav id="tabs"></nav>
   <div class="bar">
     <input type="search" id="q" placeholder="Buscar…  (atajo: /)">
-    <select id="estado"><option value="">Prendidas y archivadas</option><option value="on">Solo prendidas</option><option value="off">Solo archivadas</option></select>
+    <select id="estado"><option value="">Prendidas y archivadas</option><option value="on">Solo prendidas</option><option value="off">Solo archivadas</option><option value="norepo">Skills sin repo ni origen</option></select>
   </div>
   <div class="chips" id="chips"></div>
   <div id="out"></div>
@@ -122,17 +123,19 @@ const restoreRefs = (refs, btn) => post('/api/restore', { refs }, btn);
 const openPath = (path, reveal, btn) => post('/api/open', { path, reveal }, btn);
 
 // ---------- filtros ----------
-const TABS = [['skills', 'Skills'], ['plugins', 'Plugins'], ['mcps', 'MCPs'], ['hooks', 'Hooks'], ['rutas', 'Rutas'], ['archivo', 'Archivo']];
+const TABS = [['skills', 'Skills'], ['plugins', 'Plugins'], ['mcps', 'MCPs'], ['hooks', 'Hooks'], ['rutas', 'Rutas'], ['archivo', 'Archivo'], ['copias', 'Copias']];
 function counts() {
   return { skills: S.skills.length + S.archived.skills.length, plugins: S.plugins.length, mcps: S.mcps.length + S.archived.mcps.length,
-    hooks: S.hooks.length + S.archived.hooks.length, rutas: S.paths.reduce((n, g) => n + g.items.filter((i) => i.exists).length, 0), archivo: S.snapshots.length };
+    hooks: S.hooks.length + S.archived.hooks.length, rutas: S.paths.reduce((n, g) => n + g.items.filter((i) => i.exists).length, 0), archivo: S.snapshots.length, copias: S.backups.length };
 }
 function agentOk(list) { return !agent || (list || []).includes(agent); }
-function stateOk(on) { return !estado || (estado === 'on') === on; }
+function stateOk(on) { return !estado || estado === 'norepo' || (estado === 'on') === on; }
+// Una skill está respaldada si vive en un repo git o vino de npx skills (se puede reinstalar).
+const backedUp = (s) => !!(s.git || s.links?.github);
 
 function visibleSkills() {
   return [...S.skills, ...S.archived.skills]
-    .filter((s) => agentOk(s.seenBy) && stateOk(s.enabled) && has(s.name, s.description, s.dir, s.via))
+    .filter((s) => agentOk(s.seenBy) && stateOk(s.enabled) && (estado !== 'norepo' || (s.enabled && !backedUp(s))) && has(s.name, s.description, s.dir, s.via))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 const toolAgents = (tool) => [tool];
@@ -151,7 +154,7 @@ function render() {
   $('tabs').innerHTML = TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" onclick="go('${k}')">${l}<span class="n">${c[k]}</span></button>`).join('');
   $('chips').innerHTML = ['', ...S.agents].map((a) => `<button class="chip ${a === agent ? 'on' : ''}" onclick="agent='${a}';render()">${a || 'Todos los agentes'}</button>`).join('');
   $('chips').style.display = $('estado').style.display = ['skills', 'plugins', 'mcps', 'hooks'].includes(tab) ? '' : 'none';
-  $('out').innerHTML = ({ skills: renderSkills, plugins: renderPlugins, mcps: renderMcps, hooks: renderHooks, rutas: renderPaths, archivo: renderArchive })[tab]();
+  $('out').innerHTML = ({ skills: renderSkills, plugins: renderPlugins, mcps: renderMcps, hooks: renderHooks, rutas: renderPaths, archivo: renderArchive, copias: renderBackups })[tab]();
 }
 function go(t) { tab = t; if (!location.hash.startsWith('#/skill/')) history.replaceState(null, '', '#/' + t); render(); }
 
@@ -162,6 +165,12 @@ const bulkBar = (n, onArchive, onRestore, nOff) => `<div class="bar">
   <span class="note" style="margin:0">${n} a la vista</span>
   ${n - nOff ? `<button class="small" onclick="${esc(onArchive)}">Archivar las ${n - nOff} prendidas que se ven</button>` : ''}
   ${nOff ? `<button class="small" onclick="${esc(onRestore)}">Restaurar las ${nOff} archivadas que se ven</button>` : ''}</div>`;
+
+function gitTag(s) {
+  if (!s.enabled) return '';
+  if (s.git) return `<span class="tag ${s.git.status === 'al día' ? 'ok' : 'warn'}" title="${esc(s.git.root)}">git: ${esc(s.git.url ? s.git.url.replace('https://github.com/', '') : s.git.root)} · ${esc(s.git.status)}</span>`;
+  return s.links?.github ? '' : tag('sin repo: solo vive acá', 'warn');
+}
 
 function skillRow(s) {
   const toggle = s.enabled
@@ -174,7 +183,7 @@ function skillRow(s) {
       <div class="name"><a href="${href}">${esc(s.name)}</a></div>
       <div class="desc">${esc(s.description)}</div>
       ${tags([...s.seenBy.map((a) => tag(a, 'agent')), tag(s.dir), tag(s.scope), tag(s.via, s.via === 'enlace roto' ? 'warn' : ''),
-        ...(s.alsoAt || []).map((p) => tag('también en ' + p))])}
+        gitTag(s), ...(s.alsoAt || []).map((p) => tag('también en ' + p))])}
     </div>
     <div class="acts">
       <button class="small" onclick="location.hash='${href}'">Ver</button>
@@ -276,12 +285,35 @@ function renderArchive() {
     <p class="note">Cada vez que archivás algo se crea una carpeta acá. Restaurar devuelve cada cosa a su lugar y nunca pisa algo que ya exista con el mismo nombre.</p>`;
 }
 
+function renderBackups() {
+  const noRepo = S.skills.filter((s) => !backedUp(s)).length;
+  const size = (b) => b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB';
+  return `<div class="bar"><button class="primary" onclick="post('/api/backup', {label:'copia'}, this)">Hacer una copia ahora</button>
+      <span class="note" style="margin:0">Copia tus skills, agentes, comandos y archivos de configuración a <span class="kbd">${esc(S.backupsDir)}</span>. No mueve nada.</span></div>
+    ${noRepo ? `<p class="note">${noRepo} skill${noRepo > 1 ? 's' : ''} no está${noRepo > 1 ? 'n' : ''} en un repo ni vino${noRepo > 1 ? 'eron' : ''} de <span class="kbd">npx skills</span>: si las borrás, solo las tenés en estas copias. <button class="link" onclick="estado='norepo';$('estado').value='norepo';go('skills')">Ver cuáles</button></p>` : ''}
+    <div class="list">${S.backups.map((b) => `<div class="row" style="grid-template-columns:1fr auto">
+      <div><div class="name">${esc(new Date(b.created).toLocaleString())} · ${esc(b.label)}</div><div class="mono">${esc(b.dirShort)}</div>
+        ${tags([tag(b.entries + ' skills/agentes/comandos'), tag(b.files + ' archivos de config'), tag(size(b.bytes)), b.missing ? tag(b.missing + ' que hoy no están', 'warn') : tag('no falta nada', 'ok'), b.otherHome && tag('de otro home', 'warn')])}
+        ${b.skills.length ? `<div class="mono" style="margin-top:4px">${b.skills.map(esc).join(', ')}</div>` : ''}</div>
+      <div class="acts">
+        ${b.missing ? `<button class="small" onclick='restoreBackup(${enc(b.name)}, false, this)'>Restaurar las ${b.missing} que faltan</button>` : ''}
+        <button class="small" onclick='restoreBackup(${enc(b.name)}, true, this)'>Restaurar también la config</button>
+        <button class="small" onclick='openPath(${enc(b.dir)}, true, this)'>Mostrar</button>
+      </div>
+    </div>`).join('') || '<div class="empty">Todavía no hay copias.</div>'}</div>
+    <p class="note">Restaurar nunca pisa una skill que ya existe: solo devuelve las que faltan. "Restaurar también la config" vuelve a poner los archivos de configuración de esa copia (settings, MCPs, hooks) y antes guarda una copia de los actuales.</p>`;
+}
+function restoreBackup(name, withFiles, btn) {
+  if (withFiles && !confirm('Esto reemplaza tus archivos de configuración por los de la copia (antes guardo una copia de los actuales). ¿Sigo?')) return;
+  return post('/api/restore-backup', { name, withFiles }, btn);
+}
+
 // ---------- página de una skill ----------
 async function showSkill(s, extra = '') {
   const d = s.skillMd ? await (await fetch('/api/skill?file=' + encodeURIComponent(s.skillMd))).json() : { content: '', files: [] };
   $('dlgBody').innerHTML = `<h2>${esc(s.name)}</h2>
     <div class="desc" style="-webkit-line-clamp:unset">${esc(s.description)}</div>
-    ${tags([...(s.seenBy || []).map((a) => tag(a, 'agent')), s.dir && tag(s.dir), s.via && tag(s.via), extra && tag(extra)])}
+    ${tags([...(s.seenBy || []).map((a) => tag(a, 'agent')), s.dir && tag(s.dir), s.via && tag(s.via), s.enabled !== undefined && gitTag(s), extra && tag(extra)])}
     <p class="mono">${esc(tilde(d.dir || s.path || ''))}</p>
     <div class="acts" style="justify-content:flex-start">
       ${d.dir ? `<button onclick='openPath(${enc(d.dir)}, false, this)'>Abrir en VS Code</button><button onclick='openPath(${enc(d.dir)}, true, this)'>Mostrar carpeta</button>` : ''}
@@ -322,6 +354,7 @@ function openClean() {
     <label><input type="checkbox" id="c-plugins" checked> Apagar plugins de Claude Code (${n.plugins})</label>
     <label><input type="checkbox" id="c-mcps"> MCPs (${n.mcps})</label>
     <label><input type="checkbox" id="c-hooks"> Hooks (${n.hooks})</label>
+    <label><input type="checkbox" id="c-backup" checked> Hacer una copia de seguridad antes</label>
     <label>Solo de <select id="c-agent"><option value="">todos los agentes</option>${S.agents.map((a) => `<option>${esc(a)}</option>`).join('')}</select></label>
     <div class="acts" style="justify-content:flex-start;margin-top:12px">
       <button class="primary" onclick="doClean(this)">Archivar</button><button onclick="closeDlg()">Cancelar</button></div>`;
@@ -337,6 +370,7 @@ async function doClean(btn) {
   if (on('c-mcps')) t.push(...S.mcps.filter((m) => ok([m.tool])).map((m) => m.target));
   if (on('c-hooks')) t.push(...S.hooks.filter((h) => ok([h.tool])).map((h) => h.target));
   if (!t.length) return toast('No hay nada para archivar con esa selección.');
+  if (on('c-backup') && !(await post('/api/backup', { label: 'antes-de-arrancar-limpio' }, btn))) return;
   // Una skill enlazada desde dos carpetas se archiva una vez por carpeta: está bien, cada enlace vuelve a su lugar.
   const r = await archiveTargets(t, 'arrancar-limpio' + (a ? '-' + a : ''), btn);
   if (r) { closeDlg(); go('archivo'); }
