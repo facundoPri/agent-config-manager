@@ -15,6 +15,12 @@ cd ~/mi-repo                                        # el proyecto cuya config qu
 bunx github:facundoPri/agent-config-manager         # abre http://localhost:4321
 ```
 
+Si ya la habías corrido con `bunx`, Bun guarda esa versión y no baja las nuevas. Para actualizar, borrá su copia y corré de nuevo:
+
+```bash
+rm -rf "${TMPDIR:-/tmp}"/bunx-*agent-config-manager*
+```
+
 O clonando:
 
 ```bash
