@@ -1,6 +1,6 @@
 # agent-config-manager
 
-Una página local para ver y ordenar la configuración de tus agentes de código: **skills, plugins, MCPs y hooks** de Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI y OpenCode. Prendés y apagás cada cosa, la archivás para "arrancar limpio" y la restaurás cuando quieras. Nunca borra nada.
+Una página local para ver y ordenar la configuración de tus agentes de código: **skills, plugins, MCPs y hooks** de Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI y OpenCode. Y un **logger** para ver qué contexto recibe el modelo de verdad en cada sesión. Prendés y apagás cada cosa, la archivás para "arrancar limpio" y la restaurás cuando quieras. Nunca borra nada.
 
 *A local web page to inspect, toggle, archive and restore the skills, plugins, MCP servers and hooks of Claude Code, Codex and other coding agents. Spanish UI.*
 
@@ -32,6 +32,8 @@ Opciones:
 | `--home <carpeta>` | Usar otro home, para probar sin tocar tu configuración |
 | `--sin-cli` | No usar la CLI de `claude` para los plugins (lee y escribe los archivos directo) |
 | `--no-abrir` | No abrir el navegador |
+| `--logger` | Prender el logger al arrancar (ver abajo) |
+| `--puerto-logger 4322` | Puerto del logger. También `ACM_LOGGER_PORT` |
 
 Para probar con datos falsos: `bun run demo` (crea un home de mentira en `/tmp/acm-demo`).
 
@@ -57,6 +59,26 @@ Cada skill tiene su página con el `SKILL.md` completo y los archivos que trae. 
 | GitHub Copilot | `~/.copilot/skills`, `.github/skills` |
 | Gemini CLI | `~/.gemini/skills`, `~/.agents/skills` |
 | OpenCode | `~/.config/opencode/skills`, `~/.claude/skills`, `~/.agents/skills` |
+
+## Logger: qué recibe el modelo de verdad
+
+La pestaña **Logger** prende un proxy local (puerto 4322) que se pone entre tu agente y la API del modelo. Reenvía cada pedido igual, con tu login, devuelve la respuesta en streaming sin tocarla y guarda una copia. Así ves el contexto entero que manda el agente en cada vuelta, subagentes incluidos. La idea sale del `request-logger` del AI Coding Crash Course.
+
+```bash
+bun src/server.ts --logger                                  # o el botón "Prender" en la pestaña Logger
+ANTHROPIC_BASE_URL=http://localhost:4322/claude-code ENABLE_TOOL_SEARCH=true claude   # en otra terminal
+codex -c 'openai_base_url="http://localhost:4322/codex"'   # Codex (en prueba)
+```
+
+- **Sesiones**: una por sesión del agente (Claude Code manda `x-claude-code-session-id`; Codex, `session-id`), con el primer mensaje como título, la carpeta, cuántos pedidos y subagentes hubo.
+- **Hilos**: el principal, cada subagente (con el tipo y el pedido con que lo lanzó el principal) y las llamadas auxiliares (títulos, resúmenes, memoria).
+- **Contexto**: de qué está hecho cada pedido, en tokens: system prompt, herramientas propias y de MCPs, lista de skills, skills cargadas completas, CLAUDE.md / AGENTS.md, instrucciones del harness, recordatorios, tus mensajes, respuestas y resultados de herramientas. El total es el real que devuelve la API; el reparto por categoría es una estimación (caracteres ÷ 4).
+- **Skills**: cuánto ocupa cada skill de la lista y de dónde sale, con "Ver" y "Archivar" ahí mismo. La pestaña Skills marca "en contexto ≈N tokens" según la última sesión que pasó por el logger.
+- **Pedido completo**: system prompt, herramientas, mensajes y respuesta tal como viajaron.
+
+Los logs quedan en `~/.agent-config-manager/logs/<sesión>/` (cambialo con `AGENT_CONFIG_LOGS`), un `.json` por pedido. El login (`authorization`, `x-api-key`, cookies) nunca se guarda. Los pedidos de mantenimiento (`count_tokens`) se reenvían pero no se guardan.
+
+`ENABLE_TOOL_SEARCH=true` importa: si Claude Code ve otra URL base apaga la búsqueda de herramientas y manda todas completas, y el contexto se ve más grande de lo que es.
 
 ## Cómo apaga cada cosa
 
@@ -91,12 +113,12 @@ bash/skills-toggle.sh web                    # abre la página
 
 ## Seguridad
 
-Escucha solo en `127.0.0.1`, rechaza pedidos que no vengan de `localhost` y solo mueve cosas dentro de las carpetas de la tabla de arriba. Solo abre en el editor rutas dentro de tu home o del proyecto.
+Escucha solo en `127.0.0.1` (la página y el logger), rechaza pedidos que no vengan de `localhost` y solo mueve cosas dentro de las carpetas de la tabla de arriba. Solo abre en el editor rutas dentro de tu home o del proyecto.
 
 ## Desarrollo
 
 ```bash
-bun test       # archiva y restaura todo sobre un home falso
+bun test       # archiva y restaura todo sobre un home falso, y prueba el logger contra un servidor falso
 bun run demo
 ```
 

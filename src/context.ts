@@ -11,6 +11,7 @@ export type Ctx = {
   legacyArchives: string[]; // archivos viejos de skills-toggle.sh / skills-ui, solo para restaurar
   editor: string;
   useClaudeCli: boolean;
+  logs: string; // donde el logger guarda los pedidos, una carpeta por sesión
 };
 
 export function makeCtx(opts: { home?: string; proyecto?: string; editor?: string; sinCli?: boolean } = {}): Ctx {
@@ -25,6 +26,7 @@ export function makeCtx(opts: { home?: string; proyecto?: string; editor?: strin
     legacyArchives: legacy !== archive && fs.existsSync(legacy) ? [legacy] : [],
     editor: opts.editor || process.env.AGENT_CONFIG_EDITOR || 'code',
     useClaudeCli: !opts.sinCli,
+    logs: process.env.AGENT_CONFIG_LOGS || path.join(home, '.agent-config-manager/logs'),
   };
 }
 

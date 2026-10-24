@@ -66,6 +66,27 @@
   .dlg label { display:flex; gap:8px; align-items:center; margin:6px 0; }
   .grid2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:12px; }
   .kbd { font-family:ui-monospace, monospace; font-size:11px; border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+  .card { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:14px; margin-bottom:16px; }
+  .cmd { display:flex; gap:8px; align-items:center; margin:8px 0 2px; }
+  .cmd code { flex:1; font-family:ui-monospace, monospace; font-size:12px; background:var(--soft); padding:7px 10px; border-radius:8px; overflow-x:auto; white-space:nowrap; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--muted); margin-right:6px; }
+  .dot.on { background:var(--on); box-shadow:0 0 0 3px color-mix(in srgb, var(--on) 25%, transparent); }
+  .row.click { cursor:pointer; } .row.click:hover { background:var(--soft); }
+  .row.sel { background:var(--soft); box-shadow:inset 3px 0 0 var(--accent); }
+  .stack { display:flex; height:22px; border-radius:6px; overflow:hidden; margin:8px 0 10px; background:var(--soft); }
+  .stack div { height:100%; min-width:2px; }
+  .sw8 { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
+  table.t { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.t td, table.t th { text-align:left; padding:6px 8px; border-top:1px solid var(--line); vertical-align:top; }
+  table.t th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; border-top:0; }
+  table.t td.n, table.t th.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.t tr.click { cursor:pointer; } table.t tr.click:hover td { background:var(--soft); }
+  table.t tr.sel td { background:var(--soft); }
+  details > summary { cursor:pointer; }
+  .msg { border-top:1px solid var(--line); padding:8px 0; }
+  .msg .who { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .dlg pre.small { max-height:30vh; }
+  .back { margin-bottom:10px; }
   @media (max-width:600px) { .row { grid-template-columns:44px 1fr; } .acts { grid-column:2; justify-content:flex-start; } }
 </style>
 </head>
@@ -95,6 +116,7 @@
 
 <script>
 let S = null;
+let L = null, LS = null, LR = null; // logger: estado y sesiones, sesión abierta, pedido elegido
 let tab = 'skills', agent = '', q = '', estado = '';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -104,7 +126,7 @@ const tilde = (p) => S && p && p.startsWith(S.home + '/') ? '~' + p.slice(S.home
 
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = 'none'), 4500); }
 
-async function load() { S = await (await fetch('/api/state')).json(); render(); route(); }
+async function load() { S = await (await fetch('/api/state')).json(); render(); route(); loadLogger(); }
 
 async function post(url, body, btn) {
   if (btn) btn.disabled = true;
@@ -123,10 +145,10 @@ const restoreRefs = (refs, btn) => post('/api/restore', { refs }, btn);
 const openPath = (path, reveal, btn) => post('/api/open', { path, reveal }, btn);
 
 // ---------- filtros ----------
-const TABS = [['skills', 'Skills'], ['plugins', 'Plugins'], ['mcps', 'MCPs'], ['hooks', 'Hooks'], ['rutas', 'Rutas'], ['archivo', 'Archivo'], ['copias', 'Copias']];
+const TABS = [['skills', 'Skills'], ['plugins', 'Plugins'], ['mcps', 'MCPs'], ['hooks', 'Hooks'], ['logger', 'Logger'], ['rutas', 'Rutas'], ['archivo', 'Archivo'], ['copias', 'Copias']];
 function counts() {
   return { skills: S.skills.length + S.archived.skills.length, plugins: S.plugins.length, mcps: S.mcps.length + S.archived.mcps.length,
-    hooks: S.hooks.length + S.archived.hooks.length, rutas: S.paths.reduce((n, g) => n + g.items.filter((i) => i.exists).length, 0), archivo: S.snapshots.length, copias: S.backups.length };
+    hooks: S.hooks.length + S.archived.hooks.length, logger: L ? L.sessions.length : '', rutas: S.paths.reduce((n, g) => n + g.items.filter((i) => i.exists).length, 0), archivo: S.snapshots.length, copias: S.backups.length };
 }
 function agentOk(list) { return !agent || (list || []).includes(agent); }
 function stateOk(on) { return !estado || estado === 'norepo' || (estado === 'on') === on; }
@@ -154,9 +176,10 @@ function render() {
   $('tabs').innerHTML = TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" onclick="go('${k}')">${l}<span class="n">${c[k]}</span></button>`).join('');
   $('chips').innerHTML = ['', ...S.agents].map((a) => `<button class="chip ${a === agent ? 'on' : ''}" onclick="agent='${a}';render()">${a || 'Todos los agentes'}</button>`).join('');
   $('chips').style.display = $('estado').style.display = ['skills', 'plugins', 'mcps', 'hooks'].includes(tab) ? '' : 'none';
-  $('out').innerHTML = ({ skills: renderSkills, plugins: renderPlugins, mcps: renderMcps, hooks: renderHooks, rutas: renderPaths, archivo: renderArchive, copias: renderBackups })[tab]();
+  $('q').closest('.bar').style.display = tab === 'logger' && LS ? 'none' : '';
+  $('out').innerHTML = ({ skills: renderSkills, plugins: renderPlugins, mcps: renderMcps, hooks: renderHooks, logger: renderLogger, rutas: renderPaths, archivo: renderArchive, copias: renderBackups })[tab]();
 }
-function go(t) { tab = t; if (!location.hash.startsWith('#/skill/')) history.replaceState(null, '', '#/' + t); render(); }
+function go(t) { tab = t; if (t === 'logger') { LS = LR = null; loadLogger(); } if (!location.hash.startsWith('#/skill/')) history.replaceState(null, '', '#/' + t); render(); }
 
 const sw = (on, onchange) => `<label class="sw"><input type="checkbox" ${on ? 'checked' : ''} onchange="${esc(onchange)}"><span></span></label>`;
 const tags = (xs) => `<div class="tags">${xs.filter(Boolean).join('')}</div>`;
@@ -183,7 +206,7 @@ function skillRow(s) {
       <div class="name"><a href="${href}">${esc(s.name)}</a></div>
       <div class="desc">${esc(s.description)}</div>
       ${tags([...s.seenBy.map((a) => tag(a, 'agent')), tag(s.dir), tag(s.scope), tag(s.via, s.via === 'enlace roto' ? 'warn' : ''),
-        gitTag(s), ...(s.alsoAt || []).map((p) => tag('también en ' + p))])}
+        gitTag(s), ...(s.alsoAt || []).map((p) => tag('también en ' + p)), ctxTag(s)])}
     </div>
     <div class="acts">
       <button class="small" onclick="location.hash='${href}'">Ver</button>
@@ -197,7 +220,7 @@ function renderSkills() {
   const list = visibleSkills();
   const on = list.filter((s) => s.enabled), off = list.filter((s) => !s.enabled);
   window._vis = { on: on.map((s) => ({ kind: 'skill', path: s.path })), off: off.map((s) => s.ref) };
-  return bulkBar(list.length, `archiveTargets(_vis.on, 'skills', this)`, `restoreRefs(_vis.off, this)`, off.length) +
+  return contextNote() + bulkBar(list.length, `archiveTargets(_vis.on, 'skills', this)`, `restoreRefs(_vis.off, this)`, off.length) +
     `<div class="list">${list.map(skillRow).join('') || '<div class="empty">No hay skills con este filtro.</div>'}</div>
     <p class="note">Apagar una skill la mueve al archivo (no se borra) y la podés prender de nuevo cuando quieras. "Visible en" junta todos los agentes que la cargan: <span class="kbd">npx skills</span> deja la carpeta real en <span class="kbd">~/.agents/skills</span> (Codex, OpenCode, Gemini) y un enlace en <span class="kbd">~/.claude/skills</span>.</p>`;
 }
@@ -327,7 +350,7 @@ async function showSkill(s, extra = '') {
   if (!$('dlg').open) $('dlg').showModal();
 }
 function closeDlg() { $('dlg').close(); }
-$('dlg').addEventListener('close', () => { if (/^#\/(plugin-)?skill\//.test(location.hash)) history.replaceState(null, '', '#/' + tab); });
+$('dlg').addEventListener('close', () => { if (/^#\/(plugin-)?skill\//.test(location.hash)) history.replaceState(null, '', LS ? '#/logger/' + LS.session + (LR ? '/' + LR.record.id : '') : '#/' + tab); });
 
 function route() {
   const h = decodeURIComponent(location.hash);
@@ -339,7 +362,8 @@ function route() {
     const p = S.plugins.find((x) => x.plugin === m[1]);
     const s = p?.skills.find((x) => x.folder === m[2]);
     if (s) showSkill({ ...s, skillMd: s.path + '/SKILL.md', seenBy: ['Claude Code'], dir: 'plugin ' + p.plugin, via: p.enabled ? 'plugin prendido' : 'plugin apagado', links: { github: p.url } });
-  } else if ((m = h.match(/^#\/(\w+)$/)) && TABS.some(([k]) => k === m[1])) { tab = m[1]; render(); }
+  } else if ((m = h.match(/^#\/logger\/([\w.-]+)(?:\/([\w.-]+))?$/))) { tab = 'logger'; openSession(m[1], m[2]); }
+  else if ((m = h.match(/^#\/(\w+)$/)) && TABS.some(([k]) => k === m[1])) { tab = m[1]; if (tab === 'logger') { LS = LR = null; loadLogger(); } render(); }
 }
 window.addEventListener('hashchange', route);
 
@@ -374,6 +398,236 @@ async function doClean(btn) {
   // Una skill enlazada desde dos carpetas se archiva una vez por carpeta: está bien, cada enlace vuelve a su lugar.
   const r = await archiveTargets(t, 'arrancar-limpio' + (a ? '-' + a : ''), btn);
   if (r) { closeDlg(); go('archivo'); }
+}
+
+// ---------- logger ----------
+const fmt = (n) => n == null ? '—' : n >= 1000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1).replace('.', ',') + 'k' : String(n);
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const pct = (a, b) => b ? Math.round((100 * a) / b) + '%' : '';
+const ago = (ts) => { const s = (Date.now() - new Date(ts)) / 1000; return s < 60 ? 'recién' : s < 3600 ? `hace ${Math.round(s / 60)} min` : s < 86400 ? `hace ${Math.round(s / 3600)} h` : new Date(ts).toLocaleString(); };
+const hhmm = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const clip = (t, n = 20000) => (t = String(t ?? '')).length > n ? t.slice(0, n) + `\n… (${fmt(t.length - n)} caracteres más)` : t;
+const copy = (text) => navigator.clipboard.writeText(text).then(() => toast('Copiado'));
+const CAT_COLORS = { system: '#78716c', tools: '#2563eb', mcp: '#7c3aed', skills: '#c2410c', skillLoaded: '#f97316', memory: '#16a34a', harness: '#a8a29e',
+  mcpInstr: '#a78bfa', reminders: '#d6d3d1', user: '#0891b2', assistant: '#0d9488', toolCalls: '#ca8a04', toolResults: '#facc15' };
+const AGENT_LABEL = { 'claude-code': 'Claude Code', codex: 'Codex' };
+
+async function getJson(url) {
+  const r = await fetch(url), j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+async function loadLogger() {
+  try { L = await getJson('/api/logger'); } catch { return; }
+  if (tab === 'logger' && !LS) render();
+}
+async function loggerPost(action, btn) {
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/logger/' + action, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ port: $('lport')?.value }) });
+    const j = await r.json();
+    if (!r.ok) return toast('Error: ' + j.error);
+    L = j; render();
+  } finally { btn.disabled = false; }
+}
+// Mientras el logger está prendido, la pestaña se actualiza sola.
+setInterval(async () => {
+  if (document.hidden || tab !== 'logger' || !L?.status.running) return;
+  if (!LS) return loadLogger();
+  let d; try { d = await getJson('/api/logger/session?id=' + encodeURIComponent(LS.session)); } catch { return; }
+  if (d.requests.length === LS.requests.length) return;
+  const follow = !LR || LR.record.id === LS.lastMain;
+  LS = d;
+  if (follow && d.lastMain !== LR?.record.id) selectRequest(d.lastMain, false); else render();
+}, 3000);
+
+function renderLogger() {
+  if (!L) return '<div class="empty">Cargando…</div>';
+  if (LS) return renderSession();
+  const st = L.status;
+  const sessions = L.sessions.filter((s) => has(s.title, s.cwd, s.session, ...s.models));
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start">
+      <div><span class="dot ${st.running ? 'on' : ''}"></span><b>${st.running ? `Escuchando en localhost:${st.port}` : 'Apagado'}</b>
+        <div class="note" style="margin:4px 0 0">Se pone entre tu agente y la API del modelo: reenvía todo igual (con tu login) y guarda una copia de cada pedido, así ves el contexto que recibe el modelo de verdad, subagentes incluidos.</div></div>
+      <div class="acts">${st.running ? `<button onclick="loggerPost('stop', this)">Apagar</button>`
+        : `<label class="note" style="margin:0;display:flex;gap:6px;align-items:center">Puerto <input id="lport" value="${st.port}" size="5" style="font:inherit;padding:5px 7px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)"></label><button class="primary" onclick="loggerPost('start', this)">Prender</button>`}</div>
+    </div>
+    ${st.lastError ? `<p class="note" style="color:var(--warn)">Último error: ${esc(st.lastError)}</p>` : ''}
+    ${st.commands.map((c) => `<h3>${esc(c.label)}${c.beta ? ' · en prueba' : ''}</h3>
+      <div class="cmd"><code>${esc(c.command)}</code><button class="small" onclick='copy(${enc(c.command)})'>Copiar</button></div>
+      <div class="note" style="margin:4px 0 0">${esc(c.note)}</div>`).join('')}
+    <p class="note">${st.running ? 'Corré el comando en otra terminal, en la carpeta del proyecto. La sesión aparece abajo y se actualiza sola.' : 'Prendelo y después corré el comando en otra terminal.'}
+      Los logs quedan en <span class="kbd">${esc(tilde(st.logs))}</span> <button class="link" onclick='openPath(${enc(st.logs)}, true, this)'>Mostrar</button></p>
+  </div>
+  <h3>Sesiones</h3>
+  <div class="list">${sessions.map((s) => `<div class="row click" style="grid-template-columns:1fr auto" onclick="location.hash='#/logger/${s.session}'">
+      <div><div class="name" style="font-family:inherit">${esc(s.title.slice(0, 160))}</div>
+        ${tags([tag(AGENT_LABEL[s.agent] || s.agent, 'agent'), s.cwd && tag(tilde(s.cwd)), tag(plural(s.requests, 'pedido', 'pedidos')), s.subagents && tag(plural(s.subagents, 'subagente', 'subagentes')),
+          tag('contexto ≈' + fmt(s.ctx) + ' tokens'), ...s.models.map((m) => tag(m)), s.errors && tag(s.errors + ' con error', 'warn')])}</div>
+      <div class="note" style="margin:0;white-space:nowrap">${ago(s.lastSeen)}</div></div>`).join('')
+    || `<div class="empty">Todavía no hay sesiones. ${st.running ? 'Corré el comando de arriba.' : 'Prendé el logger.'}</div>`}</div>`;
+}
+
+async function openSession(id, reqId) {
+  if (!L) await loadLogger();
+  try { LS = await getJson('/api/logger/session?id=' + encodeURIComponent(id)); }
+  catch (e) { toast('Error: ' + e.message); LS = null; render(); return; }
+  LR = null;
+  await selectRequest(reqId && LS.requests.some((r) => r.id === reqId) ? reqId : LS.lastMain, false);
+}
+async function selectRequest(id, push = true) {
+  try { LR = await getJson(`/api/logger/request?session=${encodeURIComponent(LS.session)}&id=${encodeURIComponent(id)}`); }
+  catch (e) { return toast('Error: ' + e.message); }
+  if (push) history.replaceState(null, '', `#/logger/${LS.session}/${id}`);
+  render();
+}
+function selectThreadLast(thread) { const r = LS.requests.filter((x) => x.thread === thread).pop(); if (r) selectRequest(r.id); }
+const threadOf = (r) => LS.threads.find((t) => t.id === r.thread);
+function threadShort(r) {
+  const t = threadOf(r);
+  if (!t || t.kind === 'principal') return 'Principal';
+  if (t.kind === 'auxiliar') return 'Auxiliar' + (r.auxLabel ? ': ' + r.auxLabel.slice(0, 40) + '…' : '');
+  return 'Subagente' + (t.spawn?.type ? ' ' + t.spawn.type : '');
+}
+
+function renderSession() {
+  const s = LS, sel = LR?.record.id;
+  const head = s.requests.find((r) => r.thread === 'main') || s.requests[0];
+  const selThread = s.requests.find((r) => r.id === sel)?.thread;
+  return `<div class="back"><button class="small" onclick="location.hash='#/logger'">← Sesiones</button></div>
+    <h2 style="margin:0 0 4px;font-size:17px">${esc((head.firstPrompt || s.session).slice(0, 200))}</h2>
+    ${tags([tag(AGENT_LABEL[head.agent] || head.agent, 'agent'), head.cwd && tag(tilde(head.cwd)), tag(plural(s.requests.length, 'pedido', 'pedidos')), tag('empezó ' + new Date(s.meta.firstSeen || head.ts).toLocaleString()),
+      L?.status.running ? tag('en vivo') : ''])}
+    <h3>Hilos</h3>
+    <div class="list">${s.threads.map((t) => `<div class="row ${t.id === selThread ? 'sel' : ''}" style="grid-template-columns:1fr auto"><div>
+        <div class="name" style="font-family:inherit">${esc(t.label)}</div>
+        ${t.spawn ? `<div class="desc">Lo lanzó el hilo principal con: ${esc(t.spawn.prompt)}</div>` : ''}
+        ${tags([tag(t.kind, t.kind === 'subagente' ? 'agent' : ''), tag(plural(t.requests, 'pedido', 'pedidos')), tag('último contexto ≈' + fmt(t.ctx)), tag('salida ' + fmt(t.output) + ' tokens'), ...t.models.map((m) => tag(m))])}</div>
+        <div class="acts"><button class="small" onclick="selectThreadLast(${enc(t.id)})">Ver su contexto</button></div></div>`).join('')}</div>
+    ${LR ? renderContext() : ''}
+    <h3>Pedidos (el más nuevo arriba)</h3>
+    <div class="list" style="overflow-x:auto"><table class="t">
+      <tr><th class="n">Hora</th><th>Hilo</th><th>Modelo</th><th class="n">Contexto</th><th class="n">De caché</th><th class="n">Salida</th><th>Qué hizo</th></tr>
+      ${s.requests.slice().reverse().map((r) => `<tr class="click ${r.id === sel ? 'sel' : ''}" onclick="selectRequest('${r.id}')">
+        <td class="n">${hhmm(r.ts)}</td><td>${esc(threadShort(r))}</td><td class="mono">${esc(r.model)}</td>
+        <td class="n">${fmt(r.ctx)}</td><td class="n">${r.usage ? pct(r.usage.cacheRead, r.ctx) || '0%' : '—'}</td><td class="n">${fmt(r.usage?.output)}</td>
+        <td>${r.error || r.status >= 400 ? `<span class="tag warn">${r.status} ${esc((r.error || '').slice(0, 80))}</span>`
+          : r.toolsCalled.length ? r.toolsCalled.map((n) => tag(n)).join(' ') : `<span class="desc">${esc((r.reply || '').slice(0, 100))}</span>`}</td></tr>`).join('')}
+    </table></div>`;
+}
+
+function renderContext() {
+  const { record: r, context: c } = LR;
+  const sum = LS.requests.find((x) => x.id === r.id) || {};
+  const total = c.total || 1;
+  const rows = c.cats.map((k) => `<tr><td><details><summary><span class="sw8" style="background:${CAT_COLORS[k.key]}"></span>${esc(k.label)} <span class="note">(${k.items.length})</span></summary>
+      <table class="t" style="margin-top:6px">${k.items.slice(0, 80).map((i) => `<tr><td class="mono">${esc(i.name)}</td><td class="n">≈${fmt(i.tokens)}</td></tr>`).join('')}
+      ${k.items.length > 80 ? `<tr><td class="note">y ${k.items.length - 80} más</td><td></td></tr>` : ''}</table></details></td>
+      <td class="n">≈${fmt(k.tokens)}</td><td class="n">${pct(k.tokens, total)}</td></tr>`).join('');
+  return `<h3>Contexto del pedido de las ${hhmm(r.ts)} · ${esc(threadShort(sum))}</h3>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
+        <div><b>${fmt(c.total)} tokens</b> de entrada${c.usage ? ` · ${fmt(c.usage.cacheRead)} leídos de caché · ${fmt(c.usage.cacheWrite)} escritos en caché · ${fmt(c.usage.output)} de salida` : ' (estimado, sin respuesta de la API)'}</div>
+        <div class="acts"><button class="small" onclick="showRequest()">Ver pedido completo</button></div></div>
+      <div class="stack">${c.cats.map((k) => `<div title="${esc(k.label)}: ≈${fmt(k.tokens)}" style="width:${(100 * k.tokens) / total}%;background:${CAT_COLORS[k.key]}"></div>`).join('')}</div>
+      <table class="t">${rows}</table>
+      ${c.deferred.length ? `<p class="note">${c.deferred.length} herramienta(s) diferida(s): se mandan pero no ocupan contexto hasta que el modelo las busca con ToolSearch.</p>` : ''}
+      <p class="note">Cada pedido manda el contexto entero de nuevo. Los números por categoría son una estimación (caracteres ÷ 4) ajustada al total real que devolvió la API.</p>
+    </div>
+    ${renderContextSkills(c, total)}`;
+}
+
+// Une una skill de la lista que vio el modelo con lo que la app encuentra en disco.
+function matchSkill(name) {
+  const local = S.skills.find((s) => s.name === name || s.folder === name);
+  if (local) return { kind: 'local', s: local };
+  if (name.includes(':')) {
+    const [plug, sk] = name.split(':');
+    const p = S.plugins.find((x) => x.plugin === plug || x.plugin.split('@')[0] === plug);
+    if (p) return { kind: 'plugin', p, s: p.skills.find((x) => x.name === sk || x.folder === sk) };
+  }
+  const arch = S.archived.skills.find((s) => s.name === name || s.folder === name);
+  return arch ? { kind: 'archived', s: arch } : null;
+}
+function renderContextSkills(c, total) {
+  if (!c.skills.length && !c.loaded.length) return '';
+  const sum = c.skills.reduce((n, s) => n + s.tokens, 0);
+  const rows = c.skills.slice().sort((a, b) => b.tokens - a.tokens).map((sk) => {
+    const m = matchSkill(sk.name);
+    let where = '', acts = '';
+    if (m?.kind === 'local') {
+      where = tags([...m.s.seenBy.map((a) => tag(a, 'agent')), tag(m.s.dir), tag(m.s.scope)]);
+      acts = `<button class="small" onclick="location.hash='#/skill/${encodeURIComponent(m.s.name)}'">Ver</button>
+        <button class="small" onclick='archiveTargets([{kind:"skill",path:${enc(m.s.path)}}], ${enc('skill-' + m.s.folder)}, this)'>Archivar</button>`;
+    } else if (m?.kind === 'plugin') {
+      where = tags([tag('plugin ' + m.p.plugin), tag(m.p.enabled ? 'plugin prendido' : 'plugin apagado')]);
+      acts = (m.s ? `<button class="small" onclick="location.hash='#/plugin-skill/${encodeURIComponent(m.p.plugin)}/${encodeURIComponent(m.s.folder)}'">Ver</button>` : '') + `<button class="small" onclick="go('plugins')">Plugins</button>`;
+    } else if (m?.kind === 'archived') where = tags([tag('ya la archivaste', 'warn')]);
+    else where = tags([tag('no es un archivo tuyo: viene con el agente o de tu cuenta / organización')]);
+    return `<tr><td><div class="name">${esc(sk.name)}</div><div class="desc">${esc(sk.description)}</div>${where}</td><td class="n">≈${fmt(sk.tokens)}</td><td><div class="acts">${acts}</div></td></tr>`;
+  }).join('');
+  return `<h3>Skills en este contexto</h3><div class="card">
+    <p style="margin:0 0 8px">${c.skills.length} skills en la lista: <b>≈${fmt(sum)} tokens</b> (${pct(sum, total)} del contexto). El modelo ve solo el nombre y la descripción; el SKILL.md entero entra recién cuando la usa.</p>
+    ${c.loaded.length ? `<p class="note">Cargadas completas en esta conversación: ${c.loaded.map((l) => `<b>${esc(l.name)}</b> ≈${fmt(l.tokens)}`).join(', ')}</p>` : ''}
+    <table class="t">${rows}</table>
+    <p class="note">Archivar una skill la saca de esta lista desde la próxima sesión del agente.</p></div>`;
+}
+
+// Pestaña Skills: cuánto ocupa cada una en el contexto según la última sesión que pasó por el logger.
+function ctxTag(s) {
+  const cs = S.contextSkills;
+  if (!cs || !s.enabled) return '';
+  const tok = cs.skills[s.name] ?? cs.skills[s.folder];
+  const full = cs.loaded.includes(s.folder) || cs.loaded.includes(s.name);
+  return (tok != null ? tag('en contexto ≈' + fmt(tok) + ' tokens', 'agent') : '') + (full ? tag('cargada completa en esa sesión') : '');
+}
+function contextNote() {
+  const cs = S.contextSkills;
+  if (!cs) return '';
+  const n = Object.keys(cs.skills).length, sum = Object.values(cs.skills).reduce((a, b) => a + b, 0);
+  return `<div class="card" style="padding:10px 14px">En la última sesión de Claude Code que pasó por el logger (${ago(cs.ts)}: "${esc(cs.title.slice(0, 70))}") el modelo vio <b>${n} skills</b> en la lista,
+    <b>≈${fmt(sum)} tokens</b> de ${fmt(cs.ctx)} (${pct(sum, cs.ctx)} del contexto). <button class="link" onclick="location.hash='#/logger/${cs.session}'">Ver ese contexto</button></div>`;
+}
+
+// ---------- pedido completo ----------
+function showRequest() {
+  const r = LR.record, req = r.request || {};
+  const sys = typeof req.system === 'string' ? [{ text: req.system }] : req.system || (req.instructions ? [{ text: req.instructions }] : []);
+  const msgs = req.messages || req.input || [];
+  const tools = req.tools || [];
+  $('dlgBody').innerHTML = `<h2 style="font-family:inherit">Pedido de las ${hhmm(r.ts)} · ${esc(req.model || '')}</h2>
+    <p class="mono">${esc(r.method)} ${esc(r.path)} → ${r.status} · ${r.ms} ms · ${esc(r.id)}</p>
+    <div class="acts" style="justify-content:flex-start"><button onclick="copy(JSON.stringify(LR.record.request, null, 2))">Copiar JSON del pedido</button><button onclick="closeDlg()">Cerrar</button></div>
+    <h3>System prompt</h3>${sys.map((b) => `<pre class="small">${esc(clip(b.text))}</pre>`).join('') || '<p class="note">Vacío.</p>'}
+    <details><summary><b>Herramientas (${tools.length})</b></summary><table class="t">${tools.map((t) => `<tr><td class="mono">${esc(t.name || t.type)}${t.defer_loading ? ' · diferida' : ''}</td><td class="desc">${esc((t.description || '').slice(0, 220))}</td><td class="n">${fmt(JSON.stringify(t).length)} car.</td></tr>`).join('')}</table></details>
+    <h3>Mensajes (${msgs.length})</h3>${msgs.map(renderMsg).join('')}
+    <h3>Respuesta</h3>${(r.response?.content || []).map(renderBlock).join('') || `<pre>${esc(r.response?.error || '(vacía)')}</pre>`}
+    <details><summary><b>Cabeceras</b> (sin login)</summary><pre class="small">${esc(JSON.stringify(r.headers, null, 2))}</pre></details>`;
+  if (!$('dlg').open) $('dlg').showModal();
+}
+function renderMsg(m) {
+  if (m.type && m.type !== 'message') {
+    const body = m.arguments ?? m.output ?? m.input ?? m.summary ?? m;
+    return `<div class="msg"><div class="who">${esc(m.type)}${m.name ? ' · ' + esc(m.name) : ''}</div><pre class="small">${esc(clip(typeof body === 'string' ? body : JSON.stringify(body, null, 2)))}</pre></div>`;
+  }
+  const blocks = typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : m.content || [];
+  return `<div class="msg"><div class="who">${esc(m.role)}</div>${blocks.map(renderBlock).join('')}</div>`;
+}
+function renderBlock(b) {
+  if (['text', 'input_text', 'output_text'].includes(b.type)) {
+    return String(b.text ?? '').split(/(<system-reminder>[\s\S]*?<\/system-reminder>)/).filter((p) => p.trim()).map((p) => p.startsWith('<system-reminder>')
+      ? `<details><summary class="note">system-reminder · ${esc(p.slice(17, 100).trim())}…</summary><pre class="small">${esc(clip(p))}</pre></details>`
+      : `<pre class="small">${esc(clip(p))}</pre>`).join('');
+  }
+  if (b.type === 'thinking' || b.type === 'redacted_thinking') return `<details><summary class="note">razonamiento</summary><pre class="small">${esc(clip(b.thinking || b.text || '(cifrado)'))}</pre></details>`;
+  if (b.type === 'tool_use' || b.type === 'server_tool_use') return `<div class="note">→ llama a <b>${esc(b.name)}</b></div><pre class="small">${esc(clip(JSON.stringify(b.input, null, 2)))}</pre>`;
+  if (b.type === 'tool_result') {
+    const c = typeof b.content === 'string' ? b.content : (b.content || []).map((x) => x.text || '[' + x.type + ']').join('\n');
+    return `<details><summary class="note">← resultado (${fmt(c.length)} caracteres)${b.is_error ? ' · error' : ''}</summary><pre class="small">${esc(clip(c))}</pre></details>`;
+  }
+  if (b.type === 'tool_addition') return `<div class="note">+ herramienta agregada: <b>${esc(b.tool?.definition?.name || b.tool?.name || '')}</b></div>`;
+  return `<div class="note">[${esc(b.type)}]</div>`;
 }
 
 // ---------- teclado ----------

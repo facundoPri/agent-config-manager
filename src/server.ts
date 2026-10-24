@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // agent-config-manager: una página local para ver y ordenar skills, plugins, MCPs y hooks de Claude Code, Codex y compañía.
-// bun src/server.ts [--puerto 4321] [--proyecto <carpeta>] [--home <home falso>] [--editor code] [--sin-cli] [--no-abrir]
+// bun src/server.ts [--puerto 4321] [--proyecto <carpeta>] [--home <home falso>] [--editor code] [--sin-cli] [--no-abrir] [--logger] [--puerto-logger 4322]
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeCtx, type Ctx } from './context';
@@ -8,6 +8,7 @@ import { state, skillDetail } from './scan';
 import { archive, restore, type Target } from './archive';
 import { createBackup, restoreBackup } from './backup';
 import { listPlugins, setPluginEnabled } from './plugins';
+import { startLogger, stopLogger, loggerStatus, listSessions, sessionDetail, requestDetail, latestContextSkills, defaultPort } from './logger';
 import { exists, isInside, tilde } from './util';
 
 function parseArgs(argv: string[]) {
@@ -36,7 +37,7 @@ const PUBLIC = path.join(import.meta.dir, '..', 'public');
 function openPath(c: Ctx, p: string, reveal: boolean) {
   const target = path.resolve(p);
   const plugins = path.join(c.home, '.claude/plugins');
-  if (![c.home, c.project, c.backups].some((root) => isInside(target, root)) && !isInside(target, plugins)) throw new Error('solo abro rutas dentro del home o del proyecto');
+  if (![c.home, c.project, c.backups, c.logs].some((root) => isInside(target, root)) && !isInside(target, plugins)) throw new Error('solo abro rutas dentro del home o del proyecto');
   const tries: string[][] = [];
   if (reveal) {
     const where = exists(target) ? target : path.dirname(target);
@@ -68,6 +69,10 @@ function copyPluginSkill(c: Ctx, plugin: string, folder: string) {
   return tilde(c.home, dest);
 }
 
+// El estado de la página más las skills que vio el modelo en la última sesión que pasó por el logger.
+const fullState = (c: Ctx) => ({ ...state(c), contextSkills: latestContextSkills(c) });
+const loggerPort = () => Number(args['puerto-logger'] || defaultPort());
+
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
 
 async function handle(req: Request): Promise<Response> {
@@ -81,7 +86,10 @@ async function handle(req: Request): Promise<Response> {
   if (req.method === 'GET') {
     if (url.pathname === '/' || url.pathname === '/index.html')
       return new Response(Bun.file(path.join(PUBLIC, 'index.html')), { headers: { 'content-type': 'text/html; charset=utf-8' } });
-    if (url.pathname === '/api/state') return json(state(ctx));
+    if (url.pathname === '/api/state') return json(fullState(ctx));
+    if (url.pathname === '/api/logger') return json({ status: loggerStatus(ctx), sessions: listSessions(ctx) });
+    if (url.pathname === '/api/logger/session') return json(sessionDetail(ctx, url.searchParams.get('id') || ''));
+    if (url.pathname === '/api/logger/request') return json(requestDetail(ctx, url.searchParams.get('session') || '', url.searchParams.get('id') || ''));
     if (url.pathname === '/api/skill') return json(skillDetail(ctx, url.searchParams.get('file') || ''));
     return json({ error: 'no existe' }, 404);
   }
@@ -97,9 +105,11 @@ async function handle(req: Request): Promise<Response> {
     case '/api/backup': result = createBackup(ctx, String(body.label || 'copia')); break;
     case '/api/restore-backup': result = restoreBackup(ctx, String(body.name), !!body.withFiles); break;
     case '/api/open': result = { done: ['abierto con ' + openPath(ctx, String(body.path), !!body.reveal)] }; break;
+    case '/api/logger/start': return json({ status: startLogger(ctx, Number(body.port) || loggerPort()), sessions: listSessions(ctx) });
+    case '/api/logger/stop': return json({ status: stopLogger(ctx), sessions: listSessions(ctx) });
     default: return json({ error: 'no existe' }, 404);
   }
-  return json({ ...result, state: state(ctx) });
+  return json({ ...result, state: fullState(ctx) });
 }
 
 Bun.serve({
@@ -115,6 +125,11 @@ console.log(`agent-config-manager en ${link}`);
 console.log(`  home:     ${ctx.home}`);
 console.log(`  proyecto: ${ctx.project}`);
 console.log(`  archivo:  ${ctx.archive}`);
+if (args.logger) {
+  const st = startLogger(ctx, loggerPort());
+  console.log(`  logger:   http://localhost:${st.port}  (logs en ${ctx.logs})`);
+  for (const cmd of st.commands) console.log(`            ${cmd.label}: ${cmd.command}`);
+}
 if (!args['no-abrir'] && !args.home) {
   const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
   try { Bun.spawn([opener, link], { stdout: 'ignore', stderr: 'ignore' }); } catch {}
