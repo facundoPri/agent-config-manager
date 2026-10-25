@@ -1,6 +1,6 @@
 {
   "name": "agent-config-manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Página local para ver, apagar, archivar y restaurar skills, plugins, MCPs y hooks de Claude Code, Codex, Cursor, Gemini CLI y OpenCode.",
   "type": "module",
   "bin": { "agent-config-manager": "src/server.ts" },

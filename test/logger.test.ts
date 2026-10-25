@@ -104,3 +104,13 @@ test('rechaza WebSocket con 426 y rutas desconocidas con 404', async () => {
   expect((await fetch(`http://localhost:${port}/codex/responses`, { headers: { upgrade: 'websocket', connection: 'upgrade' } })).status).toBe(426);
   expect((await fetch(`http://localhost:${port}/otra/cosa`)).status).toBe(404);
 });
+
+test('reconoce la copia de bunx y arma el comando para actualizar', async () => {
+  const { bunxCache, updateCommand } = await import('../src/version');
+  const dir = path.join(ROOT, 'bunx-501-agent-config-manager@github@123');
+  fs.mkdirSync(path.join(dir, 'node_modules/agent-config-manager/src'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'bun.lock'), '"agent-config-manager@github:facundoPri/agent-config-manager#da9df44", {}');
+  expect(bunxCache(path.join(dir, 'node_modules/agent-config-manager'))).toEqual({ dir: fs.realpathSync(dir), commit: 'da9df44' });
+  expect(bunxCache('/Users/x/agent-config-manager')).toBeNull();
+  expect(updateCommand('/tmp/bunx-x', 'darwin')).toBe('rm -rf "/tmp/bunx-x" && bunx github:facundoPri/agent-config-manager');
+});

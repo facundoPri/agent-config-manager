@@ -10,6 +10,7 @@ import { createBackup, restoreBackup } from './backup';
 import { listPlugins, setPluginEnabled } from './plugins';
 import { startLogger, stopLogger, loggerStatus, listSessions, sessionDetail, requestDetail, latestContextSkills, defaultPort } from './logger';
 import { exists, isInside, tilde } from './util';
+import { checkForUpdate, versionInfo } from './version';
 
 function parseArgs(argv: string[]) {
   const out: Record<string, string | true> = {};
@@ -70,7 +71,7 @@ function copyPluginSkill(c: Ctx, plugin: string, folder: string) {
 }
 
 // El estado de la página más las skills que vio el modelo en la última sesión que pasó por el logger.
-const fullState = (c: Ctx) => ({ ...state(c), contextSkills: latestContextSkills(c) });
+const fullState = (c: Ctx) => ({ ...state(c), contextSkills: latestContextSkills(c), version: versionInfo() });
 const loggerPort = () => Number(args['puerto-logger'] || defaultPort());
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
@@ -121,7 +122,8 @@ Bun.serve({
 });
 
 const link = `http://localhost:${PORT}`;
-console.log(`agent-config-manager en ${link}`);
+const v = await checkForUpdate();
+console.log(`agent-config-manager ${v.version}${v.commit ? ` (${v.commit})` : ''} en ${link}`);
 console.log(`  home:     ${ctx.home}`);
 console.log(`  proyecto: ${ctx.project}`);
 console.log(`  archivo:  ${ctx.archive}`);
@@ -129,6 +131,13 @@ if (args.logger) {
   const st = startLogger(ctx, loggerPort());
   console.log(`  logger:   http://localhost:${st.port}  (logs en ${ctx.logs})`);
   for (const cmd of st.commands) console.log(`            ${cmd.label}: ${cmd.command}`);
+}
+if (v.outdated) {
+  console.log('');
+  console.log(`  Hay una versión nueva en GitHub (${v.latest.slice(0, 7)}). bunx sigue usando la que bajó la primera vez (${v.commit.slice(0, 7)}).`);
+  console.log('  Para actualizar, cortá con Ctrl+C y corré:');
+  console.log(`      ${v.update}`);
+  console.log('');
 }
 if (!args['no-abrir'] && !args.home) {
   const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';

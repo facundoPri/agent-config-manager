@@ -102,6 +102,7 @@
       <button class="primary" onclick="openClean()">Arrancar limpio…</button>
     </div>
   </header>
+  <div id="update" style="margin-top:14px"></div>
   <nav id="tabs"></nav>
   <div class="bar">
     <input type="search" id="q" placeholder="Buscar…  (atajo: /)">
@@ -170,7 +171,12 @@ function visiblePlugins() {
 
 // ---------- render ----------
 function render() {
-  $('meta').innerHTML = `home <b>${esc(S.home)}</b> · proyecto <b>${esc(tilde(S.project))}</b> · archivo <b>${esc(S.archive)}</b>` +
+  const V = S.version || {};
+  $('update').innerHTML = V.outdated ? `<div class="card" style="border-color:var(--warn)"><b style="color:var(--warn)">Hay una versión nueva de la app.</b>
+    Estás usando ${esc(V.commit.slice(0, 7))} y en GitHub está ${esc(V.latest.slice(0, 7))}: <span class="kbd">bunx</span> sigue usando la copia que bajó la primera vez.
+    Cortá la app con Ctrl+C en la terminal y corré esto:
+    <div class="cmd"><code>${esc(V.update)}</code><button class="small" onclick='copy(${enc(V.update)})'>Copiar</button></div></div>` : '';
+  $('meta').innerHTML = `${V.version ? `versión <b>${esc(V.version)}${V.commit ? ' · ' + esc(V.commit.slice(0, 7)) : ''}</b> · ` : ''}home <b>${esc(S.home)}</b> · proyecto <b>${esc(tilde(S.project))}</b> · archivo <b>${esc(S.archive)}</b>` +
     (S.claudeCli ? ' · plugins vía CLI <span class="kbd">claude</span>' : ' · plugins vía settings.json');
   const c = counts();
   $('tabs').innerHTML = TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" onclick="go('${k}')">${l}<span class="n">${c[k]}</span></button>`).join('');
